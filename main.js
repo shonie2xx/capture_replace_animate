@@ -19,7 +19,6 @@ Object.assign(document.body.style, {
 const canvas = document.getElementById("textCanvas");
 Object.assign(canvas.style, {
   border: "1px solid #000000",
-  boxShadow: "2px 2px 12px rgba(0,0,0,0.1)",
 });
 
 const ctx = canvas.getContext("2d");
@@ -54,7 +53,7 @@ function drawCenteredText(line) {
   }
   lines.push(currentLine);
 
-  const lineHeight = 24;
+  const lineHeight = 32;
   let y = canvas.height / 2;
   for (const line of lines) {
     ctx.fillText(line, canvas.width / 2, y);
@@ -64,14 +63,17 @@ function drawCenteredText(line) {
 
 const lines = text.split("\n");
 let idx = 0;
-let intervalId = null;
-let timeChange = (lines[idx].length / 60) /*per second*/ * 1000; /*to ms*/
-console.log({ timeChange });
-intervalId = setInterval(() => {
+function drawNextLine() {
   if (idx >= lines.length) {
-    clearTimeout(self.intervalId);
     return;
   }
+
   drawCenteredText(lines[idx]);
+  const timeToChange = Math.max((lines[idx].length / 15) * 1000, 1500);
+  console.log({ timeToChange });
   idx++;
-}, timeChange);
+
+  setTimeout(drawNextLine, timeToChange);
+}
+
+drawNextLine();
