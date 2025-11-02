@@ -2,18 +2,30 @@ const main = document.querySelector("main");
 const textContent = main ? main.innerText : "No main element found.";
 
 // Replace page content with canvas
-document.body.innerHTML = `<canvas id="textCanvas"></canvas>`;
+document.body.innerHTML = `
+<div id="container">
+  <canvas id="textCanvas"></canvas>
+  <div id="buttonsBar">
+    <button id="recordingBtn">Start Recording</button>
+  </div>
+</div>
+`;
 
 Object.assign(document.body.style, {
   margin: "0",
   height: "100vh",
   display: "flex",
+  flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  backgroundColor: "#000000ff",
-  overflow: "auto",
-  padding: "2rem",
-  boxSizing: "border-box",
+  backgroundColor: "#ffffff",
+});
+
+Object.assign(document.getElementById("container").style, {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
 });
 
 const canvas = document.getElementById("textCanvas");
@@ -22,23 +34,35 @@ Object.assign(canvas.style, {
   backgroundColor: "#ffffff",
 });
 
+Object.assign(document.getElementById("buttonsBar").style, {
+  display: "flex",
+  gap: "1rem",
+  marginTop: "1rem",
+});
+
+// canvas init
 const ctx = canvas.getContext("2d");
 const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.9;
 canvas.width = canvasSize;
 canvas.height = canvasSize;
-
 ctx.fillStyle = "#000000";
 ctx.font = "24px sans-serif";
 ctx.textAlign = "center";
 ctx.textBaseline = "middle";
 
-// Draws a single block of text (wrapped and centered)
-function renderTextBlock(textBlock) {
+// Canvas draw func. Draws a block of text centered both horizontally and vertically
+function drawTextBlock(textBlock) {
   const padding = 20;
   const lineHeight = 32;
   const maxWidth = canvas.width - padding * 2;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#1a1a1a";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = "24px sans-serif";
 
   const words = textBlock.split(" ");
   const lines = [];
@@ -65,30 +89,93 @@ function renderTextBlock(textBlock) {
   });
 }
 
-// Sequentially render multiple text blocks (paragraphs)
+// Main rendering loop
 function renderTextSequence(fullText) {
   const textBlocks = fullText
     .split("\n")
     .map((t) => t.trim())
     .filter(Boolean);
-  let blockIndex = 0;
 
-  const renderNextBlock = () => {
+  let blockIndex = 0;
+  let startTime = performance.now();
+  // Person can read on avarage around 15-20 characters per second
+  const charsPerSecond = 15;
+
+  // use requestAnimationFrame for smooth timing and recording
+  function animate(now) {
     if (blockIndex >= textBlocks.length) return;
 
     const textBlock = textBlocks[blockIndex];
-    const charsPerSecond = 15;
+
+    // Calculate display duration based on text length
     const displayDuration = Math.max(
       (textBlock.length / charsPerSecond) * 1000,
       1500
     );
 
-    renderTextBlock(textBlock);
-    blockIndex++;
-    setTimeout(renderNextBlock, displayDuration);
-  };
+    const elapsed = now - startTime;
 
-  renderNextBlock();
+    drawTextBlock(textBlock);
+
+    if (elapsed >= displayDuration) {
+      blockIndex++;
+      startTime = now;
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  requestAnimationFrame(animate);
 }
 
 renderTextSequence(textContent);
+
+let isRecording = false;
+let mediaRecorder;
+let recordedChunks = [];
+
+document.getElementById("recordingBtn").addEventListener("click", async () => {
+  isRecording = !isRecording;
+
+  if (isRecording) {
+    // start recording
+    const stream = canvas.captureStream(30); // 30 FPS
+    recordedChunks = [];
+
+    mediaRecorder = new MediaRecorder(stream, {
+      mimeType: "video/webm;",
+    });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        recordedChunks.push(e.data);
+      }
+    };
+
+    mediaRecorder.start();
+
+    recordingBtn.textContent = "Stop Recording";
+    recordingBtn.style.backgroundColor = "#ff4c4cff";
+  } else {
+    // stop recording
+    mediaRecorder.stop();
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: "video/webm" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.style.display = "none";
+      a.href = url;
+      a.download = "recording.webm";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      recordedChunks = [];
+    };
+    recordingBtn.textContent = "Start Recording";
+    recordingBtn.style.backgroundColor = "";
+  }
+});
