@@ -1,7 +1,58 @@
-const main = document.querySelector("main");
-const textContent = main ? main.innerText : "No main element found.";
+// Capture all visible text content
+function getVisibleTextFromDocument(root = document.body) {
+  const walker = document.createTreeWalker(
+    root,
+    NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: (node) => {
+        if (!node.nodeValue || !node.nodeValue.trim())
+          return NodeFilter.FILTER_REJECT;
+        const parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
 
-// Replace page content with canvas
+        const tag = parent.tagName ? parent.tagName.toLowerCase() : "";
+        if (
+          ["script", "style", "noscript", "svg", "canvas", "iframe"].includes(
+            tag
+          )
+        )
+          return NodeFilter.FILTER_REJECT;
+
+        let el = parent;
+        while (el && el !== document.documentElement) {
+          if (
+            el.hasAttribute("hidden") ||
+            el.getAttribute("aria-hidden") === "true"
+          )
+            return NodeFilter.FILTER_REJECT;
+          const cs = window.getComputedStyle(el);
+          if (
+            cs.display === "none" ||
+            cs.visibility === "hidden" ||
+            cs.opacity === "0"
+          )
+            return NodeFilter.FILTER_REJECT;
+          el = el.parentElement;
+        }
+        if (parent.getClientRects && parent.getClientRects().length === 0)
+          return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    },
+    false
+  );
+
+  const parts = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    parts.push(node.nodeValue.replace(/\s+/g, " ").trim());
+  }
+  return parts.join(" ").trim();
+}
+
+const textContent = getVisibleTextFromDocument();
+
+// Replace the entire page with white canvas
 document.body.innerHTML = `
 <div id="container">
   <canvas id="textCanvas"></canvas>
@@ -40,29 +91,29 @@ Object.assign(document.getElementById("buttonsBar").style, {
   marginTop: "1rem",
 });
 
-// canvas init
+// Canvas initialization
 const ctx = canvas.getContext("2d");
 const canvasSize = Math.min(window.innerWidth, window.innerHeight) * 0.9;
 canvas.width = canvasSize;
 canvas.height = canvasSize;
-ctx.fillStyle = "#000000";
+
 ctx.font = "24px sans-serif";
 ctx.textAlign = "center";
 ctx.textBaseline = "middle";
 
-// Canvas draw func. Draws a block of text centered both horizontally and vertically
-function drawTextBlock(textBlock) {
+// Draw text block with fade-in/fade-out
+function drawTextBlock(textBlock, alpha) {
   const padding = 20;
   const lineHeight = 32;
   const maxWidth = canvas.width - padding * 2;
 
+  // Reset canvas
+  ctx.globalAlpha = 1;
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = "#1a1a1a";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = "24px sans-serif";
 
   const words = textBlock.split(" ");
   const lines = [];
@@ -89,39 +140,60 @@ function drawTextBlock(textBlock) {
   });
 }
 
-// Main rendering loop
+// Split text into readable sentences
+function splitIntoSentences(text) {
+  return (
+    text
+      .replace(/\s+/g, " ")
+      .match(/[^.!?]+[.!?]*/g)
+      ?.map((s) => s.trim())
+      .filter(Boolean) || []
+  );
+}
+
 function renderTextSequence(fullText) {
-  const textBlocks = fullText
-    .split("\n")
-    .map((t) => t.trim())
-    .filter(Boolean);
-
-  let blockIndex = 0;
+  const sentences = splitIntoSentences(fullText);
+  let index = 0;
   let startTime = performance.now();
-  // Person can read on avarage around 15-20 characters per second
   const charsPerSecond = 15;
+  let fadeDuration = 500;
+  let fadePhase = "in";
+  let alpha = 0;
 
-  // use requestAnimationFrame for smooth timing and recording
   function animate(now) {
-    if (blockIndex >= textBlocks.length) return;
+    if (index >= sentences.length) return;
 
-    const textBlock = textBlocks[blockIndex];
-
-    // Calculate display duration based on text length
+    const sentence = sentences[index];
     const displayDuration = Math.max(
-      (textBlock.length / charsPerSecond) * 1000,
+      (sentence.length / charsPerSecond) * 1000,
       1500
     );
 
     const elapsed = now - startTime;
 
-    drawTextBlock(textBlock);
-
-    if (elapsed >= displayDuration) {
-      blockIndex++;
-      startTime = now;
+    // Fade logic
+    if (fadePhase === "in") {
+      alpha = Math.min(1, elapsed / fadeDuration);
+      if (elapsed >= fadeDuration) {
+        fadePhase = "show";
+        startTime = now;
+      }
+    } else if (fadePhase === "show") {
+      alpha = 1;
+      if (elapsed >= displayDuration) {
+        fadePhase = "out";
+        startTime = now;
+      }
+    } else if (fadePhase === "out") {
+      alpha = 1 - Math.min(1, elapsed / fadeDuration);
+      if (elapsed >= fadeDuration) {
+        index++;
+        fadePhase = "in";
+        startTime = now;
+      }
     }
 
+    drawTextBlock(sentence, alpha);
     requestAnimationFrame(animate);
   }
 
