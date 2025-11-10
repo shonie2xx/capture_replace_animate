@@ -141,15 +141,63 @@ function drawTextBlock(textBlock, alpha) {
 }
 
 // Split text into readable sentences
-function splitIntoSentences(text) {
-  return (
-    text
-      .replace(/\s+/g, " ")
-      .match(/[^.!?]+[.!?]*/g)
-      ?.map((s) => s.trim())
-      .filter(Boolean) || []
+function splitIntoSentences(text, maxCharsPerChunk = 180) {
+  if (!text) return [];
+
+  // Common abbreviations to ignore
+  const abbrs = [
+    "Mr",
+    "Mrs",
+    "Ms",
+    "Dr",
+    "Prof",
+    "Sr",
+    "Jr",
+    "St",
+    "etc",
+    "e.g",
+    "i.e",
+  ];
+
+  const placeholder = "<<<DOT>>>";
+  let tmp = text.replace(
+    new RegExp(`\\b(${abbrs.join("|")})\\.`, "g"),
+    `$1${placeholder}`
   );
+
+  // Split by sentence-ending punctuation (., !, ?)
+  const rawSentences = tmp.match(/[^.!?]+[.!?]*/g) || [];
+
+  // Restore placeholders and trim
+  const sentences = rawSentences
+    .map((s) => s.replace(new RegExp(placeholder, "g"), ".").trim())
+    .filter(Boolean);
+
+  // Split very long sentences into chunks
+  const chunks = [];
+  for (const s of sentences) {
+    if (s.length <= maxCharsPerChunk) {
+      chunks.push(s);
+      continue;
+    }
+    const words = s.split(" ");
+    let current = "";
+    for (const w of words) {
+      if ((current + " " + w).trim().length > maxCharsPerChunk) {
+        if (current) chunks.push(current.trim());
+        current = w;
+      } else {
+        current = (current + " " + w).trim();
+      }
+    }
+    if (current) chunks.push(current.trim());
+  }
+
+  return chunks;
 }
+
+// Example usage:
+const sentences = splitIntoSentences(textContent);
 
 function renderTextSequence(fullText) {
   const sentences = splitIntoSentences(fullText);
